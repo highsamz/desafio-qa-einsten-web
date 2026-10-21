@@ -1,0 +1,33 @@
+# Build do Maven. Cobre tambem allure-results, evidencias das falhas e o
+# relatorio gerado, que ficam todos sob target/ e nao devem ser versionados:
+#   target/allure-results            resultados brutos da execucao
+#   target/evidence/                 trace e screenshot das falhas
+#   target/site/allure-maven-plugin  relatorio HTML
+#   target/surefire-reports/         saida do runner
+target/
+
+# Allure, caso seja executado fora do ciclo do Maven
+allure-results/
+allure-report/
+.allure/
+
+# Navegadores do Playwright, se alguem apontar o cache para dentro do projeto.
+# O padrao e fora (~/.cache/ms-playwright), mas a variavel de ambiente permite mudar.
+ms-playwright/
+
+# IDEs
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+.classpath
+.project
+.settings/
+.apt_generated
+.factorypath
+
+# Sistema operacional
+.DS_Store
+Thumbs.db
+desktop.ini

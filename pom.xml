@@ -1,0 +1,187 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.samuellima</groupId>
+    <artifactId>playlab-web-tests</artifactId>
+    <version>1.0-SNAPSHOT</version>
+    <name>PlayLab Web Tests</name>
+    <description>
+        Suite de automacao Front Web da aplicacao PlayLab (Playwright Practice Arena).
+        Projeto exclusivamente de teste: nao existe src/main.
+    </description>
+
+    <properties>
+        <maven.compiler.source>21</maven.compiler.source>
+        <maven.compiler.target>21</maven.compiler.target>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <!-- Preserva o nome dos parametros no bytecode: o Allure usa isso para
+             resolver os placeholders nomeados das anotacoes @Step. -->
+        <maven.compiler.parameters>true</maven.compiler.parameters>
+
+        <!-- Versoes conferidas no Maven Central em 20/10/2026. -->
+        <junit.bom.version>6.1.3</junit.bom.version>
+        <allure.bom.version>2.35.5</allure.bom.version>
+        <playwright.version>1.63.0</playwright.version>
+        <axe.version>4.14.0</axe.version>
+        <assertj.version>3.27.7</assertj.version>
+        <slf4j.version>2.0.20</slf4j.version>
+
+        <surefire.version>3.6.0</surefire.version>
+        <aspectj.version>1.9.25</aspectj.version>
+        <allure.maven.version>2.15.2</allure.maven.version>
+        <exec.plugin.version>3.6.4</exec.plugin.version>
+    </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <!-- BOMs alinham os modulos de cada familia e evitam mistura de versoes
+                 entre api/engine/params (JUnit) e os varios adapters (Allure). -->
+            <dependency>
+                <groupId>org.junit</groupId>
+                <artifactId>junit-bom</artifactId>
+                <version>${junit.bom.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <dependency>
+                <groupId>io.qameta.allure</groupId>
+                <artifactId>allure-bom</artifactId>
+                <version>${allure.bom.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <dependencies>
+        <!-- Runner. O binding Java do Playwright nao traz test runner proprio. -->
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- Relatorio HTML com evidencias anexadas.
+             O artefato e allure-jupiter, e nao allure-junit5: este ultimo foi renomeado e
+             hoje so existe como relocation, que o Maven resolve mas avisando em toda
+             execucao. Declarar o nome atual elimina o aviso. -->
+        <dependency>
+            <groupId>io.qameta.allure</groupId>
+            <artifactId>allure-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- Automacao web. Mesma engine do Playwright TypeScript; muda o binding. -->
+        <dependency>
+            <groupId>com.microsoft.playwright</groupId>
+            <artifactId>playwright</artifactId>
+            <version>${playwright.version}</version>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- Analise automatizada de acessibilidade (axe-core) integrada ao Playwright.
+             Duas exclusoes deliberadas:
+               - playwright: o axe 4.14.0 declara a 1.63.0, a mesma que usamos. Declaro
+                 a nossa diretamente para que a versao da engine seja decisao explicita
+                 deste pom, e nao efeito colateral de uma dependencia transitiva.
+               - junit:junit: o axe arrasta JUnit 4. Com JUnit 4 no classpath, o Surefire
+                 pode selecionar o provider errado e ignorar os testes Jupiter. -->
+        <dependency>
+            <groupId>com.deque.html.axe-core</groupId>
+            <artifactId>playwright</artifactId>
+            <version>${axe.version}</version>
+            <scope>test</scope>
+            <exclusions>
+                <exclusion>
+                    <groupId>com.microsoft.playwright</groupId>
+                    <artifactId>playwright</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>junit</groupId>
+                    <artifactId>junit</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>com.github.stefanbirkner</groupId>
+                    <artifactId>system-rules</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+
+        <!-- Asercoes fluentes para o que nao e estado de DOM: listas, numeros, ordenacao.
+             O estado de DOM continua em PlaywrightAssertions, que tem retry embutido. -->
+        <dependency>
+            <groupId>org.assertj</groupId>
+            <artifactId>assertj-core</artifactId>
+            <version>${assertj.version}</version>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- O Allure traz slf4j-api sem nenhuma implementacao, e o SLF4J reclama disso em
+             toda execucao. O binding no-op silencia o aviso sem inventar um sistema de log
+             que esta suite nao usa: o diagnostico sai por trace, screenshot e pelo console
+             da pagina anexado em falha. -->
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-nop</artifactId>
+            <version>${slf4j.version}</version>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>${surefire.version}</version>
+                <configuration>
+                    <!-- O aspectjweaver e exigido pelo Allure para interceptar @Step. -->
+                    <argLine>
+                        -javaagent:"${settings.localRepository}/org/aspectj/aspectjweaver/${aspectj.version}/aspectjweaver-${aspectj.version}.jar"
+                    </argLine>
+                    <systemPropertyVariables>
+                        <allure.results.directory>${project.build.directory}/allure-results</allure.results.directory>
+                    </systemPropertyVariables>
+                    <!-- Propriedades como -Dbrowser e -Dviewport nao sao declaradas aqui
+                         de proposito: o Surefire ja repassa as -D da linha de comando ao
+                         JVM filho. Declara-las tambem aqui faria a system property existir
+                         sempre, e o config.properties nunca venceria a precedencia que o
+                         TestConfig documenta. -->
+                </configuration>
+                <dependencies>
+                    <dependency>
+                        <groupId>org.aspectj</groupId>
+                        <artifactId>aspectjweaver</artifactId>
+                        <version>${aspectj.version}</version>
+                    </dependency>
+                </dependencies>
+            </plugin>
+
+            <!-- Instalacao dos navegadores do Playwright. Pre-configurado aqui para que o
+                 comando seja o mesmo no local e na pipeline. Ver README, secao de
+                 instalacao, para a linha exata do exec:java. -->
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <version>${exec.plugin.version}</version>
+                <configuration>
+                    <mainClass>com.microsoft.playwright.CLI</mainClass>
+                    <classpathScope>test</classpathScope>
+                </configuration>
+            </plugin>
+
+            <plugin>
+                <groupId>io.qameta.allure</groupId>
+                <artifactId>allure-maven</artifactId>
+                <version>${allure.maven.version}</version>
+                <configuration>
+                    <resultsDirectory>${project.build.directory}/allure-results</resultsDirectory>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+
+</project>
