@@ -28,6 +28,9 @@ public class PlaywrightExtension
             ExtensionContext.Namespace.create(PlaywrightExtension.class);
     private static final String SESSION_KEY = "playwright-session";
 
+    private static final ExtensionContext.Namespace ENGINE_NAMESPACE =
+            ExtensionContext.Namespace.create(PlaywrightExtension.class, "engine");
+
     private static final Path EVIDENCE_ROOT = Path.of("target", "evidence");
 
     @Override
@@ -35,15 +38,12 @@ public class PlaywrightExtension
         String engine = TestConfig.browser();
         Viewport viewport = TestConfig.viewport();
 
-        Playwright playwright = Playwright.create(new Playwright.CreateOptions()
-                .setEnv(Map.of("PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD", "1")));
-        Browser browser = BrowserFactory.launch(playwright, engine, TestConfig.headless());
+        Browser browser = browser(context, engine);
         BrowserContext browserContext = browser.newContext(new Browser.NewContextOptions()
                 .setBaseURL(TestConfig.baseUrl())
                 .setViewportSize(viewport.width(), viewport.height()));
 
         browserContext.setDefaultTimeout(TestConfig.actionTimeoutMs());
-        PlaywrightAssertions.setDefaultAssertionTimeout(TestConfig.assertionTimeoutMs());
 
         browserContext.tracing().start(new Tracing.StartOptions()
                 .setScreenshots(true)
@@ -60,10 +60,24 @@ public class PlaywrightExtension
         page.navigate(TestConfig.baseUrl());
 
         context.getStore(NAMESPACE).put(SESSION_KEY,
-                new Session(playwright, browser, browserContext, page, pageLog));
+                new Session(browserContext, page, pageLog));
 
         Allure.parameter("navegador", engine);
         Allure.parameter("viewport", viewport.toString());
+    }
+
+    private Browser browser(ExtensionContext context, String engine) {
+        return context.getRoot().getStore(ENGINE_NAMESPACE).getOrComputeIfAbsent(
+                engine,
+                nome -> {
+                    Playwright playwright = Playwright.create(new Playwright.CreateOptions()
+                            .setEnv(Map.of("PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD", "1")));
+                    PlaywrightAssertions.setDefaultAssertionTimeout(
+                            TestConfig.assertionTimeoutMs());
+                    return new Engine(playwright,
+                            BrowserFactory.launch(playwright, nome, TestConfig.headless()));
+                },
+                Engine.class).browser();
     }
 
     @Override
@@ -95,8 +109,6 @@ public class PlaywrightExtension
         }
         closeQuietly(session.page());
         closeQuietly(session.browserContext());
-        closeQuietly(session.browser());
-        closeQuietly(session.playwright());
     }
 
 
@@ -165,10 +177,21 @@ public class PlaywrightExtension
         }
     }
 
-    private record Session(Playwright playwright,
-                           Browser browser,
-                           BrowserContext browserContext,
+    private record Session(BrowserContext browserContext,
                            Page page,
                            List<String> pageLog) {
+    }
+
+    private record Engine(Playwright playwright, Browser browser)
+            implements ExtensionContext.Store.CloseableResource, AutoCloseable {
+
+        @Override
+        public void close() {
+            try {
+                browser.close();
+            } finally {
+                playwright.close();
+            }
+        }
     }
 }
