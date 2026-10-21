@@ -64,18 +64,30 @@ Prioridades resultantes: **P0** entra na suíte agora; **P1** entra quando a su�
 | RF-09 | Campo obrigatório vazio é aceito | J2 | Alto | Baixa | P1 | Não |
 | RF-10 | O reset do formulário não limpa estado residual (erros, contador, sucesso) | J2 | Baixo | Média | P1 | Não |
 | RF-11 | O limite de caracteres do campo não é respeitado | J2 | Baixo | Baixa | P1 | Não |
-| RF-12 | A exclusão de usuário apaga o registro errado | J1 | **Crítico** | Baixa | P1 | Não — ver nota |
+| RF-12 | A exclusão de usuário apaga o registro errado | J1 | **Crítico** | Baixa | P0 | `USR-08` — ver nota |
 | RF-13 | O filtro por função e o seletor de registros por página não combinam com a busca | J1 | Médio | Média | P1 | Não |
 | RF-14 | O upload aceita extensão não permitida ou arquivo acima do limite | J5 | Médio | Média | P2 | Não |
 | RF-15 | O checkout conclui pedido com dados inválidos | J4 | Médio | Média | P2 | Não |
 
-**Nota sobre RF-12.** É o maior impacto de toda a matriz e ainda assim está fora da suíte.
-A razão é técnica, não de conveniência: a exclusão dispara um diálogo nativo do navegador
-e **muta estado sem backend que restaure**. Como a aplicação não tem API para semear nem
-limpar massa, o único reset disponível é recarregar a página — o que funciona, mas faz o
-teste depender de um ciclo de vida diferente do resto da suíte. É o **primeiro candidato
-do próximo ciclo**, e a forma correta de cobri-lo está descrita em
-[`estrategia-de-testes.md`](./estrategia-de-testes.md#próximos-passos).
+**Nota sobre RF-12.** É o maior impacto de toda a matriz e ficou fora da suíte por um
+ciclo, sob uma justificativa técnica que **não resistiu à verificação**: afirmava-se que a
+exclusão dispara um diálogo nativo do navegador e que, por mutar estado sem backend que
+restaure, o cenário exigiria ciclo de vida próprio.
+
+Ao implementar o cenário, nenhuma das duas premissas se confirmou:
+
+- **não existe diálogo de confirmação**, nativo nem próprio. Um handler de `page.onDialog`
+  registrado antes do clique nunca é acionado. A exclusão é imediata e irreversível, o que
+  é por si um defeito de produto, registrado como [ACH-07](./achados.md#ach-07);
+- **a mutação de estado já estava coberta** pelo isolamento da suíte: o `BrowserContext`
+  novo por teste, somado ao fato de a aplicação não persistir nada, devolve os 15 registros
+  na execução seguinte. Nenhum ciclo de vida especial foi necessário.
+
+Fica registrado como está, e não reescrito como se a decisão tivesse sido outra: a
+justificativa anterior era uma premissa não verificada sobre a aplicação, e o custo de
+automatizar era de um método no componente e um teste. A lição é a mesma da seção de
+hipóteses descartadas de [`achados.md`](./achados.md#hipóteses-descartadas) — custo
+presumido também precisa de evidência.
 
 ---
 
@@ -87,12 +99,12 @@ do próximo ciclo**, e a forma correta de cobri-lo está descrita em
 | RT-02 | Asserção que passa sem comprovar comportamento | Alto | P0 | Caso concreto tratado: os `span` de erro do formulário estão sempre visíveis e apenas vazios, então a asserção é sobre **texto**, nunca visibilidade |
 | RT-03 | Seletor quebrando a cada mudança de layout | Médio | P0 | Hierarquia `data-testid` → papel acessível → CSS estrutural. Nenhum XPath, nenhum índice fixo |
 | RT-04 | Leitura de coluna errada se a aplicação reordenar as colunas | Médio | P0 | O índice da célula é **descoberto no cabeçalho em tempo de execução**, não fixado no código |
-| RT-05 | Estado vazando entre testes | Alto | P0 | `BrowserContext` novo por teste. Nenhum teste depende de ordem |
+| RT-05 | Estado vazando entre testes | Alto | P0 | `BrowserContext` novo por teste — é ele, e não o `Browser`, que garante o isolamento. Nenhum teste depende de ordem |
 | RT-06 | Download de navegador no meio da execução, poluindo tempo e saída | Médio | P0 | `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1`. Instalação é passo próprio, com erro acionável se faltar |
 | RT-07 | Falha sem evidência suficiente para diagnosticar | Alto | P0 | Trace, screenshot e console da página anexados ao relatório, apenas em falha |
 | RT-08 | Dependência de serviço de terceiro derrubando a suíte por indisponibilidade alheia | Médio | P0 | Seção Network & API deliberadamente fora de escopo |
 | RT-09 | Inicialização a frio do Firefox causando falha isolada | Baixo | P1 | Observado e registrado em [`achados.md`](./achados.md#instabilidade-observada-na-própria-suíte). Firefox roda apenas o subconjunto `crossbrowser` |
-| RT-10 | Suíte lenta a ponto de deixar de ser executada | Médio | P1 | ~45 s em Chromium para os 9 cenários. Um `Browser` por teste é o custo aceito em troca de isolamento |
+| RT-10 | Suíte lenta a ponto de deixar de ser executada | Médio | P1 | ~35 s em Chromium para os 11 cenários. Era ~43 s quando cada teste abria o seu próprio `Browser` — tratado: a engine passou a ser aberta uma vez por execução, no *store* raiz do JUnit, e o isolamento continua vindo do `BrowserContext` novo por teste |
 
 ---
 
@@ -104,8 +116,9 @@ do próximo ciclo**, e a forma correta de cobri-lo está descrita em
 | RX-02 | Contador com texto incoerente (`Showing 1-0 of 0 entries`) | Baixo | P1 | **Confirmado** — [ACH-01](./achados.md#ach-01) |
 | RX-03 | Ordenação sem indicação de qual coluna e qual direção está ativa | Médio | P0 | **Confirmado** — [ACH-04](./achados.md#ach-04) |
 | RX-04 | Escopo da busca não informado — o campo diz "Search users..." mas filtra só Name e Email | Baixo | P1 | **Confirmado** — observação em [`achados.md`](./achados.md#observações-que-não-são-defeito) |
-| RX-05 | Tabela larga inutilizável em tela estreita | Médio | P0 | **Não confirmado** — a tabela rola dentro de `.table-wrapper` (`overflow-x: auto`) e a página **não** ganha scroll horizontal em 390x844. Padrão responsivo correto |
+| RX-05 | Tabela larga inutilizável em tela estreita | Médio | P0 | **Não confirmado** — a tabela rola dentro de `.table-wrapper` (`overflow-x: auto`) e a página **não** ganha scroll horizontal em 390x844. Padrão responsivo correto, agora protegido por `RSP-04` |
 | RX-06 | Controles principais inalcançáveis em tela reduzida | Médio | P0 | **Não confirmado** — busca, filtro, seletor de página, contador e paginação permanecem visíveis e operáveis em 390x844 |
+| RX-07 | Ação destrutiva executada por um clique, sem confirmação e sem desfazer | Alto | P0 | **Confirmado** — [ACH-07](./achados.md#ach-07). Descoberto ao automatizar `USR-08` |
 
 ---
 
@@ -141,6 +154,7 @@ desafio. Estão aqui porque identificá-los é parte do trabalho.
 | RN-03 | **O `data-testid` da linha segue o id do registro, não a posição** | Na página 2 as linhas são `table-row-6` a `table-row-10`. Isso é bom — permite endereçar por identidade — mas quebra a intuição de que `table-row-1` é a primeira linha visível |
 | RN-04 | **A aplicação comunica estado só visualmente** | Contador de resultados, mensagem de sucesso e estado de ordenação compartilham a mesma causa raiz. Não são três defeitos isolados: é um padrão arquitetural ausente. Corrigir caso a caso trata sintoma |
 | RN-05 | **`Playwright.create()` baixa navegador sob demanda** | Risco de pipeline, não de produto. Sem desligar isso, a primeira execução de um agente limpo baixa mais de 100 MB **dentro** do teste, inflando a duração relatada e corrompendo o canal de saída do Surefire |
+| RN-06 | **A exclusão não pede confirmação** | O enunciado trata a ação da linha como passo funcional da jornada ("executar uma ação disponível"). A dimensão que ele não menciona é de segurança de uso: um clique apaga o registro, sem confirmação, sem desfazer e sem anúncio a tecnologia assistiva. Num painel administrativo real, é o caminho mais curto para perda de dado — e é o mesmo padrão de RN-04: estado que só se comunica visualmente |
 
 ---
 
@@ -148,8 +162,8 @@ desafio. Estão aqui porque identificá-los é parte do trabalho.
 
 | Conjunto | Comando | Quando | Por quê |
 |---|---|---|---|
-| Suíte completa, Chromium | `mvn test` | A cada *push* e *pull request* | ~45 s. Barato o suficiente para ser o portão padrão |
-| Subconjunto `crossbrowser`, Firefox | `mvn test -Dgroups=crossbrowser -Dbrowser=firefox` | A cada *pull request* | Compatibilidade de engine muda pouco e o Firefox é 3 a 4× mais lento aqui. Dois cenários-âncora bastam |
-| Jornada crítica em 390x844 | `mvn test -Dgroups=mobile -Dviewport=mobile` | A cada *pull request* | Regressão responsiva vem de CSS, que muda com frequência |
+| Suíte completa, Chromium | `mvn test` | A cada *push* e *pull request* | ~35 s. Barato o suficiente para ser o portão padrão |
+| Subconjunto `crossbrowser`, Firefox | `mvn test -Dgroups=crossbrowser -Dbrowser=firefox` | A cada *pull request* | Compatibilidade de engine muda pouco: diferença aparece em renderização e eventos, não em lógica. Dois cenários-âncora bastam. ~21 s, dos quais 12 s são a abertura do Firefox |
+| `RSP-04` e jornada crítica em 390x844 | `mvn test -Dgroups=mobile -Dviewport=mobile` | A cada *pull request* | Regressão responsiva vem de CSS, que muda com frequência |
 | `A11Y-06` | Junto da suíte completa | A cada *push* | O custo é o da execução; não há razão para separar |
 | Verificação manual de acessibilidade | — | A cada mudança de componente de formulário ou tabela | Teclado, ordem de foco e anúncio de estado não são automatizáveis por ferramenta. É onde moram [ACH-04](./achados.md#ach-04), [ACH-05](./achados.md#ach-05) e [ACH-06](./achados.md#ach-06) |

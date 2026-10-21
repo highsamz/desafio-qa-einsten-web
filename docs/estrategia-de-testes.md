@@ -28,7 +28,8 @@ passe por acidente.
 
 **Jornada obrigatória — gerenciamento de usuários (coberta por inteiro):** carregamento e
 estrutura da tabela, localização de registro, comportamento sem correspondência,
-ordenação por coluna e navegação entre páginas.
+ordenação por coluna, navegação entre páginas e execução de uma ação disponível com
+validação do seu resultado (exclusão).
 
 **Formulário:** cadastro com dados válidos e validação de e-mail inválido.
 
@@ -37,12 +38,15 @@ ordenação por coluna e navegação entre páginas.
 **Acessibilidade:** análise automatizada com axe-core sobre o formulário de cadastro,
 complementada por análise manual registrada em [`achados.md`](./achados.md).
 
-**Responsividade:** a jornada crítica re-executada em 390x844.
+**Responsividade:** `RSP-04`, que assevera geometria de layout em tela estreita, mais a
+jornada crítica re-executada em 390x844.
 
 **Compatibilidade:** Chromium na suíte completa; Firefox num subconjunto-âncora.
 
-Total: **9 cenários automatizados**, detalhados na
-[matriz de cenários](./matriz-de-cenarios.md).
+Total: **11 cenários automatizados**, detalhados na
+[matriz de cenários](./matriz-de-cenarios.md). São dois acima da faixa de 5 a 8 sugerida
+pelo §3 do enunciado, que permite cenários adicionais: a faixa foi excedida para fechar a
+jornada obrigatória inteira, e não por acúmulo de cenários redundantes.
 
 ---
 
@@ -53,7 +57,6 @@ Resumo. A justificativa de cada item está na
 
 | Fora de escopo | Razão em uma linha |
 |---|---|
-| Exclusão de usuário | Diálogo nativo e mutação de estado sem backend que restaure — maior risco não coberto, primeiro do próximo ciclo |
 | Seção Network & API | Depende de serviço de terceiro; falharia por indisponibilidade alheia ao produto |
 | Seção Flaky & Retry | Deliberadamente não determinística: não há contrato a asseverar |
 | Seção "Accessibility" | *Sandbox* construída para passar; verde ali não protege nada |
@@ -131,8 +134,12 @@ Sem fórmula numérica. Três perguntas, em ordem, detalhadas na
 
 **P0** entra agora · **P1** entra quando a suíte crescer · **P2** fica fora.
 
-O terceiro critério é o que mais decide. `USR-08` (exclusão) tem o maior impacto da matriz
-e ficou fora por custo de manutenção. `DYN-01` tem impacto médio e entrou, porque
+O terceiro critério é o que mais decide — mas o custo tem de ser **medido**, não presumido.
+`USR-08` (exclusão) tem o maior impacto da matriz e foi mantido fora por um ciclo sob a
+justificativa de que exigiria tratar diálogo nativo e um ciclo de vida próprio. Ao ser
+implementado, nenhuma das duas coisas se confirmou: não existe diálogo de confirmação
+([ACH-07](./achados.md#ach-07)) e o `BrowserContext` novo por teste já cobre a mutação de
+estado. O cenário entrou. `DYN-01` tem impacto médio e entrou desde o início, porque
 sincronização é o risco técnico mais provável de toda a suíte.
 
 ---
@@ -254,9 +261,12 @@ reset — descarta cookies, storage e qualquer mutação de DOM do teste anterio
 suíte é executada por classe, por método isolado e por grupo (`-Dgroups`), com o mesmo
 resultado.
 
-O estado do ciclo de vida fica no `Store` do `ExtensionContext`, que o JUnit mantém com
-escopo por teste. Um `ThreadLocal` resolveria o mesmo problema, mas seria reimplementar à
-mão um escopo que o framework já oferece.
+**O que é por teste e o que é por execução.** `BrowserContext` e `Page` ficam no `Store`
+com escopo de teste; `Playwright` e `Browser` ficam no `Store` **raiz**, abertos uma vez e
+fechados pelo JUnit no fim de tudo. A fronteira é o que separa isolamento de desperdício: o
+contexto novo é o que isola, a engine nova não isolaria nada e custaria a inicialização a
+cada cenário. Um `ThreadLocal` resolveria o escopo por teste, mas seria reimplementar à mão
+o que o framework já oferece.
 
 ### Dados de teste
 
@@ -306,18 +316,25 @@ No escopo do formulário a *baseline* tem um item: `color-contrast`
 
 | Navegador | Escopo | Comando |
 |---|---|---|
-| **Chromium** | Suíte completa, 9 cenários | `mvn test` |
+| **Chromium** | Suíte completa, 11 cenários | `mvn test` |
 | **Firefox** | Subconjunto `crossbrowser`: `USR-01` e `FRM-01` | `mvn test -Dgroups=crossbrowser -Dbrowser=firefox` |
 | **WebKit** | Suportado, não executado por padrão | `mvn test -Dbrowser=webkit` |
 
 **Por que não a suíte inteira em todos.** Diferença entre engines aparece em renderização,
 layout e implementação de eventos — não em lógica de aplicação. Dois cenários-âncora
 cobrem isso: `USR-01` exercita tabela, ordenação e layout; `FRM-01` exercita formulário,
-`select`, `checkbox` e submissão. Na prática, o Firefox é 3 a 4× mais lento nesta máquina
-(10 a 18 s por teste contra 2 a 5 s no Chromium), o que confirma a decisão.
+`select`, `checkbox` e submissão.
+
+Sobre o custo do Firefox, vale corrigir uma medição: antes, com um navegador por teste, ele
+levava de 10 a 18 s **por cenário** e isso sustentava a decisão de não rodar a suíte inteira
+nele. Com a engine aberta uma vez por execução, o custo é de abertura (12 s) e não de
+cenário (2,8 s cada). A decisão de manter o subconjunto permanece, mas o argumento agora é
+outro: diferença entre engines aparece em renderização e eventos, não em lógica de
+aplicação, e dois cenários-âncora cobrem isso. Se houver razão de risco, ampliar o
+subconjunto hoje é barato.
 
 **Por que configuração e não `@ParameterizedTest`.** Um teste parametrizado por navegador
-multiplicaria a contagem de cenários da suíte e confundiria a faixa de 5 a 8 pedida. O
+multiplicaria a contagem de cenários da suíte sem acrescentar comportamento coberto. O
 cenário continua sendo um; o que muda é onde ele roda.
 
 ### Resoluções
@@ -331,10 +348,23 @@ O viewport vem de configuração, **nunca fixado no teste**. O teste não sabe e
 resolução está rodando — é o que permite a mesma jornada rodar em desktop e em mobile sem
 duplicar código.
 
+Isso vale também para `RSP-04`, e é o que faz dele um cenário honesto em vez de um teste
+que só existe num perfil: ele assevera a janela que a execução recebeu, qualquer que seja
+ela. Em 390x844, onde a tabela de fato transborda, é a prova do padrão responsivo; em
+1280x720 continua protegendo contra uma regressão de CSS que introduza scroll horizontal na
+página. Por isso não é ignorado em desktop — a suíte não tem teste ignorado.
+
+**A divisão de trabalho entre os dois.** A re-execução da jornada prova **alcance**: como o
+Playwright exige elemento visível e habilitado para preencher e clicar, interagir com a
+busca em 390px já prova que o controle continua operável. `RSP-04` prova **geometria**, que
+alcance nenhum demonstra. São perguntas diferentes, e misturá-las num só cenário deixaria as
+duas mal respondidas.
+
 **Limitação assumida:** emulamos **resolução**, não dispositivo. Não marcamos `isMobile`
 nem `hasTouch`, porque essas opções do Playwright são exclusivas do Chromium e quebrariam a
 execução em Firefox. O que se valida em 390x844 é layout e alcance dos controles, **não**
-comportamento de toque.
+comportamento de toque. Fica fora, verificado apenas à mão, o `RSP-03` (sobreposição de
+elementos), que exigiria comparar as caixas de vários elementos entre si.
 
 ---
 
@@ -352,7 +382,7 @@ comportamento de toque.
 
 A execução é considerada aprovada quando:
 
-- **100% dos 9 cenários passam em Chromium**, sem *retry* e sem teste ignorado
+- **100% dos 11 cenários passam em Chromium**, sem *retry* e sem teste ignorado
 - O subconjunto `crossbrowser` passa em Firefox
 - O subconjunto `mobile` passa em 390x844
 - `A11Y-06` não acusa violação fora da *baseline* declarada
@@ -394,14 +424,15 @@ E o inverso também acontece: o axe **aprova** o campo de busca da tabela, cujo 
 cálculo do nome acessível; o nome existe, a qualidade dele é que é ruim.
 
 **Conclusão prática:** `A11Y-06` é um portão de regressão, não um atestado de
-acessibilidade. Quatro dos seis achados desta entrega vieram de análise manual.
+acessibilidade. Cinco dos sete achados desta entrega vieram de análise manual.
 
 **Da suíte**
 
 - A execução mobile não aparece como teste na execução local padrão: é alvo explícito
   (`-Dgroups=mobile -Dviewport=mobile`) e *job* separado na pipeline
-- Um `Playwright`/`Browser` por teste custa tempo (~45 s para 9 cenários em Chromium). É o
-  preço do isolamento, e foi considerado aceitável nesta escala
+- A suíte leva ~35 s para 11 cenários em Chromium. Era ~43 s quando cada teste abria o seu
+  próprio `Browser`; a engine passou a ser aberta uma vez por execução, e o isolamento
+  continua vindo do `BrowserContext` novo por teste
 - A suíte roda sequencialmente. A arquitetura suporta paralelismo — o estado está no
   `Store` por teste, sem compartilhamento — mas o enunciado veda execução excessivamente
   paralela (§15) e nesta escala o ganho não justifica o risco
@@ -414,19 +445,20 @@ acessibilidade. Quatro dos seis achados desta entrega vieram de análise manual.
 
 Em ordem de valor.
 
-**1. `USR-08` — exclusão de usuário.** Maior risco não coberto
-([RF-12](./matriz-de-riscos.md#riscos-funcionais)). Caminho: tratar o diálogo nativo com
-`page.onDialog`, e isolar o teste com recarga explícita da página no `@BeforeEach` em vez
-do contexto novo, assumindo que ele terá ciclo de vida próprio.
-
-**2. `A11Y-03` e `A11Y-04` — teclado e ordem de foco.** Devem entrar **junto com a
+**1. `A11Y-03` e `A11Y-04` — teclado e ordem de foco.** Devem entrar **junto com a
 correção** de [ACH-04](./achados.md#ach-04), como teste de regressão. Automatizáveis com
 `page.keyboard.press("Tab")` e asserção sobre o elemento focado.
 
-**3. Ratchet da baseline do axe.** Hoje a *baseline* é uma lista estática. O passo natural
-é fazê-la decrescente: ao corrigir `color-contrast`, remover da lista, de forma que a
-baseline só encolha. Ampliar o escopo para a tabela assim que
-[ACH-02](./achados.md#ach-02) for corrigido.
+**2. Ratchet da baseline do axe.** Hoje a *baseline* é uma lista estática **por regra**, o
+que deixa um furo conhecido: uma violação de `color-contrast` num elemento novo do
+formulário não derrubaria o portão, porque a regra já está perdoada. O passo é torná-la
+nó-a-nó e decrescente — ao corrigir um nó, removê-lo da lista, de forma que a baseline só
+encolha. Ampliar o escopo para a tabela assim que [ACH-02](./achados.md#ach-02) for
+corrigido.
+
+**3. `RSP-03` — ausência de sobreposição em tela estreita.** O `RSP-04` já cobre o scroll
+horizontal; a sobreposição exigiria comparar as caixas de vários elementos entre si, o que
+é bem mais caro que a leitura única de `RSP-04` e merece cenário próprio e bem feito.
 
 **4. `FRM-02`, `FRM-04` e `FRM-05`.** Obrigatórios vazios, limite de caracteres e reset.
 Baratos, porque os componentes já expõem o necessário.
@@ -435,11 +467,9 @@ Baratos, porque os componentes já expõem o necessário.
 controlada, cobrindo a seção sem depender de serviço de terceiro. Habilita também cenários
 de erro (400, 401, 500) que hoje são inalcançáveis de forma determinística.
 
-**6. `RSP-03` e `RSP-04` como cenário próprio.** Ausência de sobreposição e de scroll
-horizontal indevido, hoje verificados apenas à mão.
+**6. Paralelismo.** Habilitar execução paralela do JUnit quando a suíte passar de ~20
+cenários, momento em que o tempo sequencial começa a incomodar. Exige uma chave de engine
+por thread no *store* raiz, porque o objeto `Playwright` não é thread-safe.
 
-**7. Paralelismo.** Habilitar execução paralela do JUnit quando a suíte passar de ~20
-cenários, momento em que o tempo sequencial começa a incomodar.
-
-**8. Relatório com histórico.** Preservar `history` entre execuções da pipeline, para que o
+**7. Relatório com histórico.** Preservar `history` entre execuções da pipeline, para que o
 Allure mostre tendência e identifique teste intermitente antes que ele vire folclore.
