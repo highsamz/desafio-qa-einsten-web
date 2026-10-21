@@ -1,0 +1,270 @@
+name: Testes Front Web
+
+# Gatilhos:
+#  - push e pull_request nas branches principais: portao padrao
+#  - workflow_dispatch: execucao manual, escolhendo navegador, viewport e grupo de testes
+on:
+  push:
+    branches: [master, develop]
+  pull_request:
+    branches: [master, develop]
+  workflow_dispatch:
+    inputs:
+      browser:
+        description: 'Navegador'
+        type: choice
+        default: chromium
+        options: [chromium, firefox, webkit]
+      viewport:
+        description: 'Perfil de viewport'
+        type: choice
+        default: desktop
+        options: [desktop, mobile]
+      grupo:
+        description: 'Grupo de testes (@Tag). Vazio = suite completa. Ex.: users, forms, dynamic, a11y, mobile, crossbrowser'
+        type: string
+        required: false
+        default: ''
+
+# Execucao nova na mesma ref cancela a anterior: evita fila de runs obsoletos
+# disputando o mesmo runner.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  JAVA_VERSION: '21'
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Suite completa. Em execucao manual, respeita o que foi escolhido no dispatch.
+  # ---------------------------------------------------------------------------
+  suite:
+    name: Suite completa
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configurar JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: temurin
+          # Cache das dependencias Maven, chaveado pelo pom.
+          cache: maven
+
+      - name: Compilar
+        run: mvn -B -ntp test-compile
+
+      # Cache dos binarios dos navegadores. A chave inclui o hash do pom porque a
+      # versao do Playwright vive la: subir a versao invalida o cache automaticamente.
+      - name: Cache dos navegadores do Playwright
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('pom.xml') }}
+          restore-keys: playwright-${{ runner.os }}-
+
+      # Passo proprio, e nao efeito colateral do primeiro teste. A suite roda com
+      # PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 justamente para que nenhum download de
+      # mais de 100 MB aconteca dentro da execucao do teste.
+      - name: Instalar navegador e dependencias de SO
+        run: mvn -B -ntp exec:java -D exec.args="install --with-deps ${{ inputs.browser || 'chromium' }}"
+
+      - name: Executar testes
+        run: |
+          ARGS="-Dbrowser=${{ inputs.browser || 'chromium' }} -Dviewport=${{ inputs.viewport || 'desktop' }}"
+          if [ -n "${{ inputs.grupo }}" ]; then
+            ARGS="$ARGS -Dgroups=${{ inputs.grupo }}"
+          fi
+          echo "Executando com: $ARGS"
+          mvn -B -ntp test $ARGS
+
+      # if: always() em todos os uploads: evidencia de falha e justamente o que nao
+      # pode ser perdido quando o passo anterior falha.
+      - name: Publicar resultados brutos do Allure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: allure-results-suite
+          path: target/allure-results
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Publicar evidencias das falhas
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: evidencias-suite
+          path: target/evidence
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Publicar relatorios do Surefire
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-suite
+          path: target/surefire-reports
+          if-no-files-found: ignore
+          retention-days: 14
+
+  # ---------------------------------------------------------------------------
+  # Compatibilidade entre navegadores: apenas os cenarios-ancora em Firefox.
+  # Roda em paralelo com os outros jobs. Paralelismo no nivel de job, e nao de
+  # teste, mantem cada execucao sequencial e previsivel dentro do seu runner.
+  # ---------------------------------------------------------------------------
+  crossbrowser:
+    name: Compatibilidade (Firefox)
+    runs-on: ubuntu-latest
+    if: github.event_name != 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: temurin
+          cache: maven
+
+      - name: Compilar
+        run: mvn -B -ntp test-compile
+
+      - name: Cache dos navegadores do Playwright
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-firefox-${{ runner.os }}-${{ hashFiles('pom.xml') }}
+          restore-keys: playwright-firefox-${{ runner.os }}-
+
+      - name: Instalar navegador e dependencias de SO
+        run: mvn -B -ntp exec:java -D exec.args="install --with-deps firefox"
+
+      - name: Executar cenarios-ancora em Firefox
+        run: mvn -B -ntp test -Dgroups=crossbrowser -Dbrowser=firefox
+
+      - name: Publicar resultados brutos do Allure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: allure-results-crossbrowser
+          path: target/allure-results
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Publicar evidencias das falhas
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: evidencias-crossbrowser
+          path: target/evidence
+          if-no-files-found: ignore
+          retention-days: 14
+
+  # ---------------------------------------------------------------------------
+  # Responsividade: a jornada critica re-executada em 390x844.
+  # E o mesmo codigo de teste; o que muda e a configuracao do viewport.
+  # ---------------------------------------------------------------------------
+  mobile:
+    name: Responsividade (390x844)
+    runs-on: ubuntu-latest
+    if: github.event_name != 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: temurin
+          cache: maven
+
+      - name: Compilar
+        run: mvn -B -ntp test-compile
+
+      - name: Cache dos navegadores do Playwright
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('pom.xml') }}
+          restore-keys: playwright-${{ runner.os }}-
+
+      - name: Instalar navegador e dependencias de SO
+        run: mvn -B -ntp exec:java -D exec.args="install --with-deps chromium"
+
+      - name: Executar jornada critica em resolucao mobile
+        run: mvn -B -ntp test -Dgroups=mobile -Dviewport=mobile
+
+      - name: Publicar resultados brutos do Allure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: allure-results-mobile
+          path: target/allure-results
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Publicar evidencias das falhas
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: evidencias-mobile
+          path: target/evidence
+          if-no-files-found: ignore
+          retention-days: 14
+
+  # ---------------------------------------------------------------------------
+  # Relatorio unico. O Allure exige duas etapas separadas: gerar e publicar.
+  # Este job junta os resultados brutos dos tres jobs anteriores num relatorio
+  # so, de modo que desktop, Firefox e mobile aparecam lado a lado.
+  # if: always() porque relatorio de execucao que falhou e o mais importante.
+  # ---------------------------------------------------------------------------
+  relatorio:
+    name: Relatorio Allure
+    runs-on: ubuntu-latest
+    needs: [suite, crossbrowser, mobile]
+    if: always()
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: temurin
+          cache: maven
+
+      - name: Baixar os resultados de todos os jobs
+        uses: actions/download-artifact@v4
+        with:
+          pattern: allure-results-*
+          path: target/allure-results
+          merge-multiple: true
+
+      - name: Gerar o relatorio HTML
+        run: mvn -B -ntp allure:report
+
+      - name: Publicar o relatorio HTML
+        uses: actions/upload-artifact@v4
+        with:
+          name: relatorio-allure
+          path: target/site/allure-maven-plugin
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Resumo da execucao
+        if: always()
+        run: |
+          {
+            echo "## Testes Front Web — PlayLab"
+            echo ""
+            echo "| Job | Resultado |"
+            echo "|---|---|"
+            echo "| Suite completa (Chromium, desktop) | ${{ needs.suite.result }} |"
+            echo "| Compatibilidade (Firefox) | ${{ needs.crossbrowser.result }} |"
+            echo "| Responsividade (390x844) | ${{ needs.mobile.result }} |"
+            echo ""
+            echo "O relatorio Allure esta no artefato **relatorio-allure**."
+            echo "Evidencias de falha (trace, screenshot, console) nos artefatos **evidencias-\***."
+            echo ""
+            echo "O trace abre em <https://trace.playwright.dev>."
+          } >> "$GITHUB_STEP_SUMMARY"
