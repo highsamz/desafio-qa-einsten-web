@@ -16,7 +16,6 @@ public class RegistrationFormComponent {
     private final Locator country;
     private final Locator terms;
     private final Locator submitButton;
-    private final Locator resetButton;
     private final Locator successMessage;
 
     public RegistrationFormComponent(Page page) {
@@ -29,7 +28,6 @@ public class RegistrationFormComponent {
         this.country = page.getByTestId("select-country");
         this.terms = page.getByTestId("check-terms");
         this.submitButton = page.getByTestId("btn-register");
-        this.resetButton = page.getByTestId("btn-reset");
         this.successMessage = page.getByTestId("form-success");
     }
 
@@ -56,25 +54,6 @@ public class RegistrationFormComponent {
     public RegistrationFormComponent submit() {
         submitButton.click();
         return this;
-    }
-
-    @Step("Limpar o formulario")
-    public RegistrationFormComponent reset() {
-        resetButton.click();
-        return this;
-    }
-
-
-    public Locator root() {
-        return root;
-    }
-
-    public Locator fullNameField() {
-        return fullName;
-    }
-
-    public Locator emailField() {
-        return email;
     }
 
     public Locator successMessage() {
