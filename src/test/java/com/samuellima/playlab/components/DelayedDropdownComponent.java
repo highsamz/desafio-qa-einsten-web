@@ -9,14 +9,12 @@ public class DelayedDropdownComponent {
     private static final String PLACEHOLDER_INICIAL = "Click button to load...";
     private static final String PLACEHOLDER_CARREGADO = "Select a category...";
 
-    private final Locator root;
     private final Locator loadButton;
     private final Locator select;
     private final Locator loader;
     private final Locator result;
 
     public DelayedDropdownComponent(Page page) {
-        this.root = page.getByTestId("delayed-dropdown-card");
         this.loadButton = page.getByTestId("load-delayed-dropdown-btn");
         this.select = page.getByTestId("delayed-select");
         this.loader = page.getByTestId("delayed-dropdown-loader");
@@ -34,10 +32,6 @@ public class DelayedDropdownComponent {
     public DelayedDropdownComponent selectByLabel(String rotulo) {
         select.selectOption(new com.microsoft.playwright.options.SelectOption().setLabel(rotulo));
         return this;
-    }
-
-    public Locator root() {
-        return root;
     }
 
     public Locator loadButton() {

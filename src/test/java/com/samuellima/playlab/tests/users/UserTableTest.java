@@ -176,4 +176,51 @@ class UserTableTest {
 
         assertThat(tabela.nextPageButton()).isDisabled();
     }
+
+    @Test
+    @DisplayName("USR-08 | A exclusao remove o usuario correto, preserva os vizinhos e atualiza o contador")
+    @Story("Executar acao na tabela")
+    @Severity(SeverityLevel.BLOCKER)
+    @Description("""
+            Passo final da jornada obrigatoria: executar uma acao disponivel na tabela e
+            validar o resultado da operacao. E o cenario que protege o unico risco
+            classificado como critico na matriz (RF-12): apagar o registro errado.
+
+            A exclusao e imediata. Nao ha dialogo de confirmacao, nativo nem proprio:
+            verificado em 21/10/2026 com um handler de page.onDialog registrado antes do
+            clique, que nunca foi acionado. Esta registrado como achado (ACH-07) --
+            acao destrutiva sem confirmacao e sem desfazer. O teste assevera o
+            comportamento que a aplicacao tem, nao o que ela deveria ter.
+
+            Quatro asercoes, cada uma cobrindo um modo de falha diferente:
+
+            1. a linha do usuario 3 desaparece: a acao surtiu efeito;
+            2. os vizinhos 2 e 4 continuam presentes. Esta e a asercao que diferencia
+               "removeu" de "removeu o certo" -- sem ela, o teste passaria tambem se a
+               exclusao tivesse esvaziado a tabela inteira;
+            3. a primeira pagina passa a exibir 1, 2, 4, 5, 6: a exclusao nao deixou
+               lacuna, a pagina se recompos puxando o primeiro registro da pagina
+               seguinte;
+            4. o contador vai de 15 para 14: o total acompanhou a remocao.
+
+            O estado nao precisa ser restaurado. Cada teste roda em BrowserContext novo e
+            a aplicacao nao persiste nada, de modo que os 15 registros voltam na proxima
+            execucao -- o isolamento da suite cobre a mutacao, sem ciclo de vida especial
+            para este cenario.
+            """)
+    void exclusaoRemoveUsuarioCorretoEAtualizaContador(Page page) {
+        UserTableComponent tabela = new UserTableComponent(page);
+
+        assertThat(tabela.rowForUserId(3)).isVisible();
+        assertThat(tabela.summary()).hasText("Showing 1-5 of 15 entries");
+
+        tabela.deleteUser(3);
+
+        assertThat(tabela.rowForUserId(3)).hasCount(0);
+        assertThat(tabela.rowForUserId(2)).isVisible();
+        assertThat(tabela.rowForUserId(4)).isVisible();
+        assertThat(tabela.columnCells(Column.ID))
+                .hasText(new String[] {"1", "2", "4", "5", "6"});
+        assertThat(tabela.summary()).hasText("Showing 1-5 of 14 entries");
+    }
 }

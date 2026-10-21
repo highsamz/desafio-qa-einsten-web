@@ -53,12 +53,6 @@ public class UserTableComponent {
         return this;
     }
 
-    @Step("Limpar o campo de pesquisa")
-    public UserTableComponent clearSearch() {
-        searchField.fill("");
-        return this;
-    }
-
     @Step("Ordenar pela coluna {coluna}")
     public UserTableComponent sortBy(Column coluna) {
         if (!coluna.sortable()) {
@@ -66,6 +60,12 @@ public class UserTableComponent {
                     "A coluna " + coluna + " nao e ordenavel na aplicacao.");
         }
         columnHeader(coluna).click();
+        return this;
+    }
+
+    @Step("Excluir o usuario de id {userId}")
+    public UserTableComponent deleteUser(int userId) {
+        deleteButton(userId).click();
         return this;
     }
 
@@ -81,8 +81,8 @@ public class UserTableComponent {
         return this;
     }
 
-    public Locator root() {
-        return root;
+    public Locator wrapper() {
+        return root.locator(".table-wrapper");
     }
 
     public Locator rows() {
@@ -91,10 +91,6 @@ public class UserTableComponent {
 
     public Locator summary() {
         return summary;
-    }
-
-    public Locator searchField() {
-        return searchField;
     }
 
     public Locator columnHeader(Column coluna) {
@@ -121,13 +117,13 @@ public class UserTableComponent {
         return root.getByTestId("table-row-" + userId);
     }
 
+    public Locator deleteButton(int userId) {
+        return root.getByTestId("delete-" + userId);
+    }
+
 
     public Locator columnCells(Column coluna) {
         return rows.locator("td:nth-child(" + (columnIndex(coluna) + 1) + ")");
-    }
-
-    public Locator firstRowCell(Column coluna) {
-        return columnCells(coluna).first();
     }
 
     private int columnIndex(Column coluna) {

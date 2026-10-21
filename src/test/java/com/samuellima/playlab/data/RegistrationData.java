@@ -6,8 +6,4 @@ public record RegistrationData(String fullName,
                                String phone,
                                String bio,
                                String countryCode) {
-
-    public RegistrationData withEmail(String outroEmail) {
-        return new RegistrationData(fullName, outroEmail, password, phone, bio, countryCode);
-    }
 }

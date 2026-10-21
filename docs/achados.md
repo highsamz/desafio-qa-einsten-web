@@ -4,8 +4,9 @@ Defeitos e observações encontrados na análise da aplicação **PlayLab — Pl
 Practice Arena** (`https://playwrightlab.github.io/`), antes e durante a construção da
 suíte automatizada.
 
-Todos os itens abaixo foram **observados diretamente na aplicação em 20/10/2026**, com o
-método de verificação registrado em cada um. Itens que não resistiram à verificação estão
+Todos os itens abaixo foram **observados diretamente na aplicação**, com o método de
+verificação registrado em cada um. ACH-01 a ACH-06 vêm da análise exploratória de
+20/10/2026; o ACH-07 apareceu em 21/10/2026, durante a automação de `USR-08`. Itens que não resistiram à verificação estão
 na seção [Hipóteses descartadas](#hipóteses-descartadas) — achado que não se confirma não
 vira defeito.
 
@@ -17,6 +18,7 @@ vira defeito.
 | [ACH-04](#ach-04) | Ordenação da tabela inacessível por teclado e sem estado programático | Alta | Manual |
 | [ACH-05](#ach-05) | Mudanças de estado não são anunciadas a tecnologia assistiva | Alta | Manual |
 | [ACH-06](#ach-06) | Campo de busca rotulado apenas por *placeholder* | Baixa | Manual |
+| [ACH-07](#ach-07) | Exclusão de usuário sem confirmação e sem desfazer | Alta | Manual — ao automatizar `USR-08` |
 
 ---
 
@@ -195,6 +197,62 @@ ferramenta diz verde e o problema existe.
 
 ---
 
+## ACH-07
+
+**Exclusão de usuário sem confirmação e sem desfazer**
+
+Severidade: **alta** · WCAG 3.3.4 (AA) e 4.1.3 (AA) · **Não detectável pelo axe**
+
+O botão de exclusão da linha (`[data-testid=delete-N]`) remove o registro **no primeiro
+clique**. Não há diálogo de confirmação nativo, não há modal próprio, não há desfazer e não
+há qualquer mensagem informando que a remoção aconteceu.
+
+**Como foi detectado.** Durante a implementação de `USR-08`, um handler de
+`page.onDialog` foi registrado **antes** do clique, gravando tipo e mensagem de qualquer
+diálogo. Ele nunca foi acionado:
+
+```
+>>> DIALOGO: null
+>>> SUMMARY: Showing 1-5 of 14 entries
+>>> IDS....: [1, 2, 4, 5, 6]
+```
+
+O registro desapareceu e a tabela se recompôs. Nenhuma confirmação foi pedida em momento
+algum.
+
+**Como reproduzir**
+
+1. Ir a *Data Tables › User Management*
+2. Clicar no ícone de lixeira da linha de qualquer usuário
+3. Observar a tabela e o contador
+
+**Esperado:** confirmação antes de uma ação destrutiva (WCAG 3.3.4 pede confirmação,
+reversão ou revisão para ações com consequência), e anúncio do resultado em região
+`aria-live`.
+**Obtido:** remoção imediata, silenciosa e irreversível.
+
+**Por que é severidade alta.** O contexto é um painel administrativo de usuários. Um clique
+acidental — ou um clique na linha errada, numa tabela cujos controles de linha são
+icon-only e ficam a poucos pixels um do outro — apaga o registro sem recurso. Como a
+aplicação não persiste nada, aqui o dano se desfaz recarregando a página; num produto com
+backend, não se desfaria.
+
+**Causa raiz compartilhada.** É a mesma de [ACH-05](#ach-05) e do RN-04 da matriz: a
+aplicação comunica mudança de estado **apenas visualmente**. A remoção não é anunciada, do
+mesmo modo que o contador de resultados e a mensagem de sucesso do formulário não são.
+
+**Por que o axe não pega.** A ferramenta inspeciona um retrato estático do DOM. O botão de
+exclusão tem `title="Delete"`, logo tem nome acessível e passa. O que falta é um fluxo de
+confirmação — comportamento, não marcação.
+
+**Relação com a suíte:** `USR-08` assevera o comportamento **funcional** da exclusão (o
+registro certo sai, os vizinhos ficam, o contador acompanha), que é o que funciona. A
+ausência de confirmação e de anúncio **não** é asseverada: asseverar ausência transformaria
+a correção do defeito em quebra de teste. Quando a confirmação existir, `USR-08` precisará
+tratar o diálogo — e aí a premissa que antes era falsa passa a ser verdadeira.
+
+---
+
 ## Hipóteses descartadas
 
 Registradas porque a investigação que as descartou vale tanto quanto a que confirma.
@@ -279,5 +337,7 @@ código. Atribuído à inicialização a frio do binário recém-baixado.
 Mitigação adotada: a suíte **não baixa navegador durante o teste** (ver
 `PlaywrightExtension`), e a instalação é passo próprio, no local e na pipeline. Isso tira
 a variável de rede do caminho do teste. O Firefox também é consistentemente mais lento
-para iniciar nesta máquina (10 a 18 s por teste, contra 2 a 5 s no Chromium), o que é parte
-da justificativa para não rodar a suíte inteira nele.
+para iniciar nesta máquina: 12 s de abertura, contra 4 s do Chromium. Enquanto cada teste
+abria o seu próprio navegador, isso custava de 10 a 18 s **por cenário**; com a engine aberta
+uma vez por execução, o custo passou a ser pago uma só vez (os cenários seguintes levam
+~2,8 s).
