@@ -21,7 +21,7 @@ on:
         default: desktop
         options: [desktop, mobile]
       grupo:
-        description: 'Grupo de testes (@Tag). Vazio = suite completa. Ex.: users, forms, dynamic, a11y, mobile, crossbrowser'
+        description: 'Grupo de testes (@Tag). Vazio = suite completa. Ex.: users, forms, dynamic, a11y, responsive, mobile, crossbrowser'
         type: string
         required: false
         default: ''
@@ -163,8 +163,9 @@ jobs:
           retention-days: 14
 
   # ---------------------------------------------------------------------------
-  # Responsividade: a jornada critica re-executada em 390x844.
-  # E o mesmo codigo de teste; o que muda e a configuracao do viewport.
+  # Responsividade em 390x844: o cenario RSP-04, que assevera geometria de layout, e a
+  # jornada critica re-executada. Nos dois casos o viewport vem da configuracao, nunca do
+  # codigo do teste.
   # ---------------------------------------------------------------------------
   mobile:
     name: Responsividade (390x844)
@@ -192,7 +193,7 @@ jobs:
       - name: Instalar navegador e dependencias de SO
         run: mvn -B -ntp exec:java -D exec.args="install --with-deps chromium"
 
-      - name: Executar jornada critica em resolucao mobile
+      - name: Executar cenarios de resolucao mobile
         run: mvn -B -ntp test -Dgroups=mobile -Dviewport=mobile
 
       - name: Publicar resultados brutos do Allure
